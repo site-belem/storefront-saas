@@ -13,24 +13,35 @@ import {
   Loader2,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import ProductsTab from "@/components/dashboard/ProductsTab";
 import OrdersTab from "@/components/dashboard/OrdersTab";
 import SettingsTab from "@/components/dashboard/SettingsTab";
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("products");
 
-  const { data: store, isLoading } = trpc.stores.getMyStore.useQuery();
+  const { data: store, isLoading } = trpc.stores.getMyStore.useQuery(undefined, {
+    enabled: !!user,
+  });
 
-  if (!user) {
-    setLocation("/");
-    return null;
-  }
+  // Redirecionar para home se não estiver autenticado
+  useEffect(() => {
+    if (!loading && !user) {
+      setLocation("/");
+    }
+  }, [user, loading, setLocation]);
 
-  if (isLoading) {
+  // Redirecionar para criar loja se não tiver loja
+  useEffect(() => {
+    if (user && !isLoading && !store) {
+      setLocation("/create-store");
+    }
+  }, [user, isLoading, store, setLocation]);
+
+  if (loading || isLoading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-96">
@@ -40,29 +51,8 @@ export default function Dashboard() {
     );
   }
 
-  if (!store) {
-    return (
-      <DashboardLayout>
-        <div className="max-w-2xl mx-auto">
-          <Card className="p-8 text-center">
-            <LayoutGrid className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-            <h2 className="text-xl font-semibold text-slate-900 mb-2">
-              Nenhuma loja encontrada
-            </h2>
-            <p className="text-slate-600 mb-6">
-              Você ainda não criou uma loja. Clique no botão abaixo para começar.
-            </p>
-            <Button
-              onClick={() => setLocation("/create-store")}
-              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Criar Loja
-            </Button>
-          </Card>
-        </div>
-      </DashboardLayout>
-    );
+  if (!user || !store) {
+    return null;
   }
 
   return (
