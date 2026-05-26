@@ -13,14 +13,17 @@ function getQueryParam(req: Request, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function getRedirectUri(): string {
-  // Use REDIRECT_URI from env, fallback to localhost for development
-  return process.env.REDIRECT_URI || "http://localhost:3000";
+function getRedirectUri(req: Request): string {
+  // Detect the origin from the request header
+  const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
+  return `${protocol}://${host}`;
 }
 
-function getGoogleAuthUrl(redirectUri: string): string {
+function getGoogleAuthUrl(req: Request, redirectUri: string): string {
   const state = Buffer.from(redirectUri).toString("base64");
-  const callbackUrl = `${getRedirectUri()}/api/oauth/callback`;
+  const baseUrl = getRedirectUri(req);
+  const callbackUrl = `${baseUrl}/api/oauth/callback`;
   
   const params = new URLSearchParams({
     client_id: ENV.googleClientId,
@@ -32,8 +35,9 @@ function getGoogleAuthUrl(redirectUri: string): string {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-async function exchangeCodeForGoogleToken(code: string) {
-  const callbackUrl = `${getRedirectUri()}/api/oauth/callback`;
+async function exchangeCodeForGoogleToken(req: Request, code: string) {
+  const baseUrl = getRedirectUri(req);
+  const callbackUrl = `${baseUrl}/api/oauth/callback`;
   
   const params = new URLSearchParams({
     client_id: ENV.googleClientId,
@@ -52,6 +56,8 @@ async function exchangeCodeForGoogleToken(code: string) {
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error("[OAuth] Token exchange failed:", errorText);
     throw new Error("Failed to exchange code for token");
   }
 
@@ -88,7 +94,7 @@ export function registerOAuthRoutes(app: Express) {
   // Login route - redirect to Google
   app.get("/api/oauth/login", (req: Request, res: Response) => {
     const redirectUri = getQueryParam(req, "redirect") || "/";
-    const authUrl = getGoogleAuthUrl(redirectUri);
+    const authUrl = getGoogleAuthUrl(req, redirectUri);
     res.redirect(authUrl);
   });
 
@@ -106,7 +112,7 @@ export function registerOAuthRoutes(app: Express) {
       const redirectUri = Buffer.from(state, "base64").toString();
 
       // Exchange code for token
-      const tokenData = await exchangeCodeForGoogleToken(code);
+      const tokenData = await exchangeCodeForGoogleToken(req, code);
       const userInfo = await getGoogleUserInfo(tokenData.access_token);
 
       if (!userInfo.id) {
