@@ -364,7 +364,7 @@ export const appRouter = router({
           });
         }
 
-        return await db.updateOrderStatus(input.id, input.status);
+        return await db.updateOrderStatus(input.id, store.id, input.status);
       }),
   }),
 });

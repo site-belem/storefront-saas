@@ -375,10 +375,22 @@ export async function createOrder(
 
 export async function updateOrderStatus(
   orderId: number,
+  storeId: number,
   status: "pending" | "confirmed" | "completed" | "cancelled"
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  // Verify order belongs to the store
+  const order = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+
+  if (order.length === 0 || order[0].storeId !== storeId) {
+    throw new Error("Pedido nao encontrado ou nao pertence a esta loja");
+  }
 
   return await db
     .update(orders)

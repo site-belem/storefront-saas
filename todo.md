@@ -43,8 +43,8 @@
 
 ## Fase 7: Painel de Pedidos do Lojista
 - [x] Criar página de histórico de pedidos
-- [ ] Implementar filtros e busca de pedidos
-- [ ] Adicionar controle de status de pedidos
+- [x] Implementar filtros e busca de pedidos
+- [x] Adicionar controle de status de pedidos
 - [ ] Criar visualização detalhada de cada pedido
 - [ ] Implementar notificações de novos pedidos
 
