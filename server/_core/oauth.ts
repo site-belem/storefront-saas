@@ -25,6 +25,10 @@ function getGoogleAuthUrl(req: Request, redirectUri: string): string {
   const baseUrl = getRedirectUri(req);
   const callbackUrl = `${baseUrl}/api/oauth/callback`;
   
+  console.log("[OAuth] Generating auth URL");
+  console.log("[OAuth] Base URL:", baseUrl);
+  console.log("[OAuth] Callback URL:", callbackUrl);
+  
   const params = new URLSearchParams({
     client_id: ENV.googleClientId,
     redirect_uri: callbackUrl,
@@ -39,6 +43,11 @@ async function exchangeCodeForGoogleToken(req: Request, code: string) {
   const baseUrl = getRedirectUri(req);
   const callbackUrl = `${baseUrl}/api/oauth/callback`;
   
+  console.log("[OAuth] Exchanging code for token");
+  console.log("[OAuth] Base URL:", baseUrl);
+  console.log("[OAuth] Callback URL:", callbackUrl);
+  console.log("[OAuth] Code:", code.substring(0, 20) + "...");
+  
   const params = new URLSearchParams({
     client_id: ENV.googleClientId,
     client_secret: ENV.googleClientSecret,
@@ -46,6 +55,8 @@ async function exchangeCodeForGoogleToken(req: Request, code: string) {
     grant_type: "authorization_code",
     redirect_uri: callbackUrl,
   });
+
+  console.log("[OAuth] Sending token request to Google");
 
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -57,10 +68,11 @@ async function exchangeCodeForGoogleToken(req: Request, code: string) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error("[OAuth] Token exchange failed:", errorText);
+    console.error("[OAuth] Token exchange failed:", response.status, errorText);
     throw new Error("Failed to exchange code for token");
   }
 
+  console.log("[OAuth] Token exchange successful");
   return response.json();
 }
 
@@ -103,22 +115,31 @@ export function registerOAuthRoutes(app: Express) {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
 
+    console.log("[OAuth] Callback received");
+    console.log("[OAuth] Has code:", !!code);
+    console.log("[OAuth] Has state:", !!state);
+
     if (!code || !state) {
+      console.error("[OAuth] Missing code or state");
       res.status(400).json({ error: "code and state are required" });
       return;
     }
 
     try {
       const redirectUri = Buffer.from(state, "base64").toString();
+      console.log("[OAuth] Redirect URI from state:", redirectUri);
 
       // Exchange code for token
       const tokenData = await exchangeCodeForGoogleToken(req, code);
       const userInfo = await getGoogleUserInfo(tokenData.access_token);
 
       if (!userInfo.id) {
+        console.error("[OAuth] No user ID in response");
         res.status(400).json({ error: "id missing from user info" });
         return;
       }
+
+      console.log("[OAuth] User authenticated:", userInfo.id);
 
       // Upsert user in database
       await db.upsertUser({
@@ -138,6 +159,8 @@ export function registerOAuthRoutes(app: Express) {
       // Set session cookie
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
+      console.log("[OAuth] Session created, redirecting to:", redirectUri);
 
       // Redirect to original URL or home
       res.redirect(302, redirectUri);
