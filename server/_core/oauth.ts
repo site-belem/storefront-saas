@@ -13,11 +13,18 @@ function getQueryParam(req: Request, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function getRedirectUri(): string {
+  // Use REDIRECT_URI from env, fallback to localhost for development
+  return process.env.REDIRECT_URI || "http://localhost:3000";
+}
+
 function getGoogleAuthUrl(redirectUri: string): string {
   const state = Buffer.from(redirectUri).toString("base64");
+  const callbackUrl = `${getRedirectUri()}/api/oauth/callback`;
+  
   const params = new URLSearchParams({
     client_id: ENV.googleClientId,
-    redirect_uri: `${process.env.REDIRECT_URI || "http://localhost:3000"}/api/oauth/callback`,
+    redirect_uri: callbackUrl,
     response_type: "code",
     scope: "profile email",
     state,
@@ -26,12 +33,14 @@ function getGoogleAuthUrl(redirectUri: string): string {
 }
 
 async function exchangeCodeForGoogleToken(code: string) {
+  const callbackUrl = `${getRedirectUri()}/api/oauth/callback`;
+  
   const params = new URLSearchParams({
     client_id: ENV.googleClientId,
     client_secret: ENV.googleClientSecret,
     code,
     grant_type: "authorization_code",
-    redirect_uri: `${process.env.REDIRECT_URI || "http://localhost:3000"}/api/oauth/callback`,
+    redirect_uri: callbackUrl,
   });
 
   const response = await fetch("https://oauth2.googleapis.com/token", {
