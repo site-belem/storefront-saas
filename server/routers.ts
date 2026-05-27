@@ -5,11 +5,76 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
 import { TRPCError } from "@trpc/server";
+import { hashPassword, verifyPassword } from "./_core/simple-auth";
 
 export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
+    
+    login: publicProcedure
+      .input(z.object({ username: z.string(), password: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const user = await db.getUserByUsername(input.username);
+        if (!user) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "Usuário ou senha incorretos",
+          });
+        }
+
+        const passwordValid = await verifyPassword(input.password, user.password);
+        if (!passwordValid) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "Usuário ou senha incorretos",
+          });
+        }
+
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, user.id.toString(), cookieOptions);
+
+        return { success: true, user };
+      }),
+
+    register: publicProcedure
+      .input(
+        z.object({
+          username: z.string().min(3, "Usuário deve ter pelo menos 3 caracteres"),
+          password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+          confirmPassword: z.string(),
+          name: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (input.password !== input.confirmPassword) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "As senhas não conferem",
+          });
+        }
+
+        const existingUser = await db.getUserByUsername(input.username);
+        if (existingUser) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Usuário já existe",
+          });
+        }
+
+        const hashedPassword = await hashPassword(input.password);
+        const userId = await db.createUser(
+          input.username,
+          hashedPassword,
+          input.name
+        );
+
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, userId.toString(), cookieOptions);
+
+        return { success: true, userId };
+      }),
+
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
