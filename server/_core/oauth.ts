@@ -1,11 +1,10 @@
-import type { Express, Request, Response } from "express";
+import express, { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { ENV } from "./env";
 import { SignJWT } from "jose";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 
-const COOKIE_NAME = "session";
-const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 const SECRET = new TextEncoder().encode(ENV.cookieSecret);
 
 function getQueryParam(req: Request, key: string): string | undefined {
@@ -90,9 +89,10 @@ async function getGoogleUserInfo(accessToken: string) {
   return response.json();
 }
 
-async function createSessionToken(openId: string, options: { name: string; expiresInMs: number }) {
+async function createSessionToken(openId: string, appId: string, options: { name: string; expiresInMs: number }) {
   const token = await new SignJWT({
     openId,
+    appId,
     name: options.name,
   })
     .setProtectedHeader({ alg: "HS256" })
@@ -150,17 +150,19 @@ export function registerOAuthRoutes(app: Express) {
         lastSignedIn: new Date(),
       });
 
-      // Create session token
-      const sessionToken = await createSessionToken(userInfo.id, {
+      // Create session token with appId
+      const appId = ENV.appId || "storefront-saas";
+      const sessionToken = await createSessionToken(userInfo.id, appId, {
         name: userInfo.name || "",
         expiresInMs: ONE_YEAR_MS,
       });
 
-      // Set session cookie
+      // Set session cookie with correct name
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      console.log("[OAuth] Session created, redirecting to:", redirectUri);
+      console.log("[OAuth] Session created with cookie:", COOKIE_NAME);
+      console.log("[OAuth] Redirecting to:", redirectUri);
 
       // Redirect to original URL or home
       res.redirect(302, redirectUri);
